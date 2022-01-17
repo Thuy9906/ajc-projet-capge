@@ -1,4 +1,6 @@
-﻿# PROJET FINAL DEVOPS. 
+<a href='http://44.202.5.0:8080/job/capge_projet_final/'><img src='http://44.202.5.0:8080/job/capge_projet_final/badge/icon'></a>
+
+# PROJET FINAL DEVOPS. 
 
 ## **1- Introduction**
 
