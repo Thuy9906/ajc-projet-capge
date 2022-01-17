@@ -9,7 +9,7 @@ Pour des raisons d'unicité, et à cause d'un problème rencontré avec pgadmin 
 <br>
 
 Pour des raisons économique et fonctionnelles nous avons décider que :
-* Les machines cibles seront des serveur ubuntu 20.4 LTS (sur aws)
+* Les machines cibles seront des serveur ubuntu 20.04 LTS (sur aws)
 * La région sera la Virginie du Nord
 * L'utilisateur par défaut du système sera "ubuntu"
 
@@ -76,7 +76,72 @@ Pour résoudre ce problème nous avons utilisé docker_compose.
 ```
 /pgadmin4/servers.json
 
-If this file is mapped, server definitions found in it will be loaded at launch time. This allows connection information to be pre-loaded into the instance of pgAdmin in the container. Note that server definitions are only loaded on first launch, i.e. when the configuration database is created, and not on subsequent launches using the same configuration database.
+If this file is mapped, server definitions found in it will be loaded at launch time. 
+This allows connection information to be pre-loaded into the instance of pgAdmin in the container. 
+Note that server definitions are only loaded on first launch, i.e. when the configuration database is created, and not on subsequent launches using the same configuration database.
 ```
 
 # Les Playbooks Ansible
+Afin de consommer et tester nos roles, nous avons créé 3 playbooks
+* playbook_odoo :
+    * docker_role
+    * odoo_role
+* playbook_pgadmin
+    * docker_role
+    * pgadmin_role
+* playbook_ic-webapp
+    * docker_role
+    * ic-webapp_role
+
+Afin de tester nos role nous avons créer les deux instances suivantes :
+* instance ec2 odoo, sur laquelle on souhaite avoir odoo (frontend + backend)
+    * t2.micro
+    * ip : 54.221.36.222
+    * dns : ec2-54-221-36-222.compute-1.amazonaws.com
+    * sécurity Group : 22 / 5432 / 8069
+* instance ec2 server, sur laquelle on souhaite avoir pgAdmin et ic-webapp
+    * t2.micro
+    * ip : 34.229.74.135
+    * dns : ec2-34-229-74-135.compute-1.amazonaws.com
+    * sécurity Group : 22 / 80 / 5050 
+* Nous dispons aussi d'un clé privé permettant de se connecter aux deux instances ec2 ci-dessus:
+    * /home/ubuntu/.ssh/capge_projet_kp.pem
+
+
+* Pour lancer les playbooks, nous devons surcharger les variables d'environnement suivantes
+    * **ansible_connection** : spécifier qu'il s'agit d'une connexion ssh
+    * **ansible_host** : spécifier l'adresse ip de l'instance ec2 hote sur laquelle on execute le playbook
+    * **host_db** : l'adresse ip de la machine sur laquelle se trouve la base de donnée postgres
+    * **odoo_url** : l'adresse dns publique ou ip publique de l'instance ec2 odoo 
+    * **pgadmin_url** : l'adresse dns publique ou ip publique de l'instance ec2 server
+    * **ic_webapp_image** : le nom de l'image ic-webapp sur docker-hub
+    * **ic_webapp_port** *(optionnel)* : port exposé (externe) de l'application ic-webapp
+```bash
+### Commande ansible à exéctuer (sur une machine disposant de ansible) ###
+
+# install requirements
+ansible-galaxy install -r roles/requirements.yml
+
+# deploy odoo container on odoo ec2
+ansible-playbook -i hosts.yml playbook_odoo.yml \
+    -e ansible_connection='ssh' \
+    -e ansible_host='54.221.36.222' \
+    --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
+
+# deploy pgamdin on server ec2
+ansible-playbook -i hosts.yml playbook_pgadmin.yml \
+    -e ansible_connection='ssh' \
+    -e ansible_host='34.229.74.135' \
+    -e host_db='54.221.36.222' \
+    --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
+
+# deploy ic-webapp on server ec2
+ansible-playbook -i hosts.yml playbook_ic-webapp.yml \
+    -e ansible_connection='ssh' \
+    -e ansible_host='34.229.74.135' \
+    -e odoo_url='http://ec2-54-221-36-222.compute-1.amazonaws.com:8069' \
+    -e pgadmin_url='http://ec2-34-229-74-135.compute-1.amazonaws.com:5050' \
+    -e ic_webapp_image='lianhuahayu/ic-webapp:1.0' \
+    -e ic_webapp_port='80' \
+    --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
+```
