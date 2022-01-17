@@ -111,16 +111,29 @@ docker container stop $(docker container ls -aq)
 docker container rm $(docker container ls -aq)
 ```
 
-
-### Test des vulnérabilités de notre images
-Ensuite on récupère snyk pour tester les vulnérabilités de notre image.
-
+Pour nettoyer nos environnements de tests des containers créés plutard, ce script rapide supprime les container proprement, puis supprime les volumes et supprime le répertoire où est sauvegarder les configurations persistantes ! Nous avons apellé ce script clean.sh toujours utile.
+Pour nettoyer l'environnement de test local :
 ```shell
-docker pull snyk/snyk-cli:docker
-
+#!/bin/bash
+docker container stop $(docker container ls -aq)
+docker container rm $(docker container ls -aq)
+docker volume prune --force
+docker network prune --force
+sudo rm -Rf /backup/*
+user@worker:~$ sudo sh clean.sh
 ```
 
 
+### Test des vulnérabilités de notre images
+Ensuite on récupère snyk pour tester les vulnérabilités de notre image, pour information Docker et Snyk ont un partenaria ce qui fait qu'à l'installation de docker, ce dernier possède l'outil docker scan qui permet de scanner des containers en s'appuyant sur une api Snyk.
+
+```shell
+docker scan --version
+
+docker scan --login --token <mon token snyk>
+docker scan lianhuahayu/ic-webapp:1.0 --file Dockerfile
+```
+On peut ajouter beaucoup plus de détail de paramètre pour que nos scans soient efficients. Nous verrons par la suite que dans le pipeline nous pouvons passer par un docker scan ou directement avec une cli snyk que l'on va récupérer avec nodejs sur notre node Master JENKINS en /bin/bash via la commande d'installation `npm install snyk@latest -g`
 
 
 ### Push image sur le registry
@@ -151,3 +164,19 @@ Maintenant nous pouvons récupérer notre image pour la déployer où l'on veut 
 docker pull lianhuahayu/ic-webapp:1.0
 ```
 
+
+### Installation de Snyk Security sur Jenkins 
+### 3. Configure a Snyk API Token Credentials
+
+J'ai tenté cette partie sans succès, le SNYK utilisé par le plugin sur Jenkins est un snyk test simplement, le snyk container de docker scan est tellement mieux.
+-   [Get your Snyk API Token](https://support.snyk.io/hc/en-us/articles/360004037537-Authentication-for-third-party-tools)
+-
+-   Allez sur "Administrer Jenkins" > "Manage Credentials"
+-   Choisir un magasin
+-   Choisir un domaine
+-   Go to "Add Credentials"
+-   Choisir  "Snyk API Token", ce n'est pas un secret text, par contre si vous comptez utiliser le snyk récupérer via un npm sur votre système jenkins ou un node, préféré un "text secret" comme type pour le Token
+-   Configurer les credentials
+-   Se rapeller de l'ID qu'on a rentré car il sera nécessaire
+
+Cette piste a été explorer mais sans succès. 
