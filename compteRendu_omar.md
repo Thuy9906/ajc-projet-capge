@@ -114,8 +114,10 @@ Afin de tester nos role nous avons créer les deux instances suivantes :
     * **host_db** : l'adresse ip de la machine sur laquelle se trouve la base de donnée postgres
     * **odoo_url** : l'adresse dns publique ou ip publique de l'instance ec2 odoo 
     * **pgadmin_url** : l'adresse dns publique ou ip publique de l'instance ec2 server
-    * **ic_webapp_image** : le nom de l'image ic-webapp sur docker-hub
+    * **ic_webapp_image** : image docker de ic-webapp sur docker-hub
     * **ic_webapp_port** *(optionnel)* : port exposé (externe) de l'application ic-webapp
+    * **postgres_image** : image docker de postgres sur docker-hub 
+    * **odoo_image** : image docker de odoo sur docker-hub
 
 ## Commandes ansible à exécuter (sur une machine disposant ansible)
 ```bash
@@ -164,3 +166,46 @@ ansible-playbook -i hosts.yml playbook_ic-webapp.yml \
 !["Capture_Capge_08.JPG"](./assets/Capture_Capge_08.JPG)<br>
 ### ***`site ic-webapp`***
 !["Capture_Capge_09.JPG"](./assets/Capture_Capge_09.JPG)<br>
+
+# Déploiement de l'environnement dev avec TERRAFORM
+## Réflexion 
+* Les instances ec2 qui sur lesquelles seront déployés les conteneurs sont de type t2.micro (imposé)
+* Ansible requière au minimum une machine de type t2.medium
+* Nous avons choisi de ne pas surcharger le serveur Jenkins avec Ansible afin qu'il reste uniquement dédié a son role de CI/CD.
+* Nous aurons donc besoin de créer 3 instances :
+    * x1 instance ec2 Master pour Ansible de type t3.medium qui lancera les playbooks
+    * x2 instances ec2 Worker de type t2.micro 
+        * Serveur Admin (ic-webapp et pgadmin)
+        * Serveur Odoo (odoo frontend et odoo backend)
+
+## Les modules
+* sg : module permettant de mettre un place un group de sécurité aws
+* ec2_master : module permettant de créer une instance t3.medium et qui lancera les commandes ansible
+* ec2_worker : module permettant des instance t2.micro
+
+## Les crédentials
+Pour des raison de sécurité, le fichier ***`.aws/credential`*** est simplement un template.<br>
+Dans notre JenkinsFile, nous allons remplacer donc remplacer chaine de caractères suivantes par les valeurs de nos crédentials, stockés de façon sécurisé dans Jenkins :
+* YOUR_KEY_ID
+* YOUR_ACCESS_KEY
+
+## Les variables à surcharger
+* Obligatoires
+    * key_path : chemin ou se trouve la clé privé que va utilier ec2 MASTER pour exectuer les script en ssh
+    * key_name : le nom de la clé privé du coté de AWS
+    * ic-webapp_image : le nom de l'image ic-webapp sur dockerhub
+    * odoo_image : nom de l'image odoo sur dockerhub
+    * postgres_image : nom de l'image postgres sur dockerhub
+* Optionnelles
+    * odoo_port : port de l'interface web de odoo
+    * pgadmin_port : port de l'interface web de pgAdmin
+
+#### ***`Exemple`***
+```bash
+terraform init
+terraform plan 
+terraform apply -var='key_path=~/.ssh/key.pem' \
+                -var='ic-webapp_image=lianhuahayu/ic-webapp:1.0' \
+                -var='odoo_image=odoo:13.0' \
+                -var='postgres_image=postgres:10'
+```
