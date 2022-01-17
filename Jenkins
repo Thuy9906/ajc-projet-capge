@@ -1,0 +1,114 @@
+## L'installation de Jenkins
+L'installation de Jenkins s'est fait sur AWS - une instance t2.medium avec 20Go de stockage.
+
+Pour l'installation nous nous sommes basé sur l'image de notre formateur Frazer : [https://github.com/sadofrazer/jenkins-frazer.git](https://github.com/sadofrazer/jenkins-frazer.git) 
+
+Cette image est néanmoins obscolète et n'embarque pas tout ce que l'on souhaite.
+
+Pour l'installation de cette image, il a fallu faire l'installation de docker sur la machine Jenkins, en voici la procédure rapide :
+
+```shell
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker centos
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+Ce script d'installation peut être installé dans les user data aux lancement de l'instance AWS.
+
+
+### Paquets utiles à installer sur le node 
+Plusieurs paquet ont été installés pour une meilleur stabilité de Jenkins et pour des utilisations plus poussés avec le gestionnaire de paquet yum :
+
+- java-11-openjdk.x86_64 : optionnel mais il est toujours bien d'avoir une application à jour, il est recommandé par jenkins d'utiliser Java 11.
+	
+
+- awscli : ce paquet nous servira principalement à gérer nos ressources de l'environnement test que l'on va créer au niveau du service ec2 d'aws
+	
+
+- nodejs : ce paquet nodejs nous servira pour si l'on souhaite utiliser un snyk-cli au lieu de docker scan, et pouvoir aussi convertir nos rapports snyk.json en rapport.html plus lisible pour les différentes équipes opérationnels dont la branche sécurité evidemment qui auront besoin du rapport du vulnérabilité lisible de notre nouvelle image.
+	
+	On pourra installer via npm **`npm install snyk-to-html -g`** (commande à executer sur le containeur) puis executer la commande **`snyk-to-html -i results.json -o results.html`** pour convertir notre rapport resultats.json en results.html depuis notre pipeline en prenant comme agent notre node Jenkins via **sh**.
+	
+- Installation de ansible sur la machine Jenkins, en temps normal, une partie de l'équipe était partie pour utiliser Jenkins comme le serveur ansible pour le déploiement via des rôles, mais une très bonne idée d'un des membres de l'équipe à succiter un changement, voici tout de même le processus pour l'installation d'ansible sur le node Jenkins.
+
+
+```sh
+sudo apt update -y
+curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3
+pip3 install ansible
+ansible --version
+```
+
+
+
+### Connexion à l'interface web d'admin
+
+La première fois que l'interface d'administration est lancée sur le port par défaut 8080, il vous faudra rentrer le mot de passe d'initialisation si c'est votre première install, sur docker c'est simple il suffit de passer cette commande ci `docker exec jenkins-frazer_jenkins_1 cat /var/lib/jenkins/secrets/initialAdminPassword`. 
+
+Elle permet d'executer la commande car <fichier> sur le containeur en question.
+	
+Je vous suggère également d'installer les plugins par defaut, nous y reviendront plus tard pour l'installation des plugins.
+
+	
+### Mise à jour de Jenkins
+Mise à jour de Jenkins en version 2.319.2, pour la mise à jour de la version de notre Jenkins, nous nous sommes connectés directement aux conteneurs via la commande `docker exec -it jenkins-frazer_jenkins_1 /bin/bash` 
+	
+Pour la mise à jour, il suffit de récupérer https://get.jenkins.io/war-stable/2.319.2/jenkins.war via un wget, puis déplacer le jenkins.war dans le répetoire `/usr/lib/jenkins/jenkins.war`
+
+Le chemin de l'executable-war se trouve dans les informations de votre système de votre Jenkins, que vous pouvez retrouver ici :
+![[Pasted image 20220117173653.png]]
+
+Pour appliquer la mise à jour, il suffit de relancer le container avec les commandes suivantes 
+```shell
+docker container stop jenkins-frazer_jenkins_1
+docker container start jenkins-frazer_jenkins_1 
+```
+
+###Listes des plugins :
+Il n'y a pas beaucoup de plugins utile pour ce projet, mais l'installation de l'outil **Terraform** pour la partie IaC plus tard.
+
+L'extensions pour les webhooks afin que le webhooks avec git fonctionne sans souci. 
+
+Il y aura aussi l'embedded status pour afficher le status de notre build, de notre pipeline directement sur github par exemple. Pas nécessaire étant donné que l'image que l'on utilise est linké avec le socket docker de l'hote, prévoir tout de même l'installation de plugin Docker également.
+	
+On aurait pu utiliser Snyk comme plugin, mais ce Snyk n'est pas le snyk container, mais le snyk test, et ce qui nous interesse c'est le Snyk container pour analyser notre image.
+
+
+### Listes des credentials :
+Ici je vous vous listez les credentials nécessaire pour que notre pipeline tourne sans souci :
+	- token_dockerhub : ce token servira à push notre build d'image sur le registry public, dockerhub
+	
+	- capge_key_pair : cette paire d'utilisateur et clée privée contient la clé qui nous permettera de nous connecter sur nos instances aws. DE BONNES PRATIQUES AURAIENT VOULU QUE NOUS AYONS DEUX PAIRES DE CLES. Une paire de clé pour les connexions externes, puis une autre paire de clé pour les serveurs internents.
+	
+	- AWS_ACCESS_KEY_ID et AWS_SECRET_ACCESS_KEY sont les clés permettant de s'authentifier sur notre compte aws pour faire des actions comme la création d'environnement via Terraform, ou le mangaement de nos instances via AWS CLI.
+	
+	- Et finalement snyk-api-token, n'est pas nécessaire car `docker scan` inclus déjà une api de Snyk, mais si l'on veut que nos rapports soit linker à notre compte il faudra utiliser ce token pour se loguer.
+
+Les crédentials de github ici ne sont pas nécessaire, car le repos est public. Mais en temps normal les repos de futurs releases sont privées ! Pour plus de flexibilité nous avons décidé d'utilisé des repos publics. Mais nous avons bien noté que en entreprise ça ne sera pas le cas, sauf si on fait de l'open source.
+
+	
+![[Pasted image 20220117174702.png]]	
+	
+### Configuration des différents paramètres :
+L'installation de Terraform se fait dans l'onglet qui gère les plugins :
+Allez dans  **Manage Jenkins > Manage Plugins >Available >** Puis chercher  **Terraform.**
+Installation du plugin terraform :
+![[Pasted image 20220115213745.png]]
+
+ Une fois installer nous allons configuré l'outil pour qu'il installe une version pour notre système de Terraform comme suit :
+Allez dans **Manage Jenkins > Global Tool Configuration >** puis vous aurez une liste de  **Terraform**. Il est important de donner un "Name" et choisir une version compatible avec votre système haha.
+![[Pasted image 20220117194537.png]]	
+
+Dans notre pipeline nous allons l'invoquer avec l'instruction go suivante :
+
+```go	
+	tools{
+		terraform Terraform
+}
+```
+	
+	
