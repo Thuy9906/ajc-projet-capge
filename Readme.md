@@ -1,4 +1,4 @@
-<a href='http://44.202.5.0:8080/job/capge_projet_final/'><img src='http://44.202.5.0:8080/job/capge_projet_final/badge/icon'></a>
+<a href='http://44.202.5.0:8080/job/capge_projet_final/'><img src='http://44.202.5.0:8080/buildStatus/icon?job=capge_projet_final'></a>
 
 # PROJET FINAL DEVOPS. 
 
