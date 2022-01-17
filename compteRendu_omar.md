@@ -342,6 +342,57 @@ Afin de consommer et tester nos roles, nous avons créé 3 playbooks
     * docker_role
     * ic-webapp_role
 
+#### ***`roles/requirements.yml`***
+```yml
+- src: https://github.com/lianhuahayu/docker_role.git
+- src: https://github.com/lianhuahayu/odoo_role.git
+- src: https://github.com/Yellow-carpet/pgadmin_role.git
+- src: https://github.com/omarpiotr/ic-webapp_role.git
+```
+#### ***`playbook_odoo.yml`***
+```yml
+---
+- name: "deploy Odoo with a role"
+  hosts: ansible
+  become: true
+  roles:
+    - docker_role
+    - odoo_role 
+```
+#### ***`playbook_pgadmin.yml`***
+```yml
+---
+- name: "deploy pgadmin with a role"
+  hosts: ansible
+  become: true
+  roles:
+    - docker_role
+    - pgadmin_role
+```
+#### ***`playbook_ic-webapp.yml`***
+```yml
+---
+- name: "deploy pgadmin with a role"
+  hosts: ansible
+  become: true
+  roles:
+    - docker_role
+    - ic-webapp_role
+```
+#### ***`hosts_.yml`***
+```yml
+all:
+  children:
+    ansible:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_user: "ubuntu"
+          hostname: AnsibleMaster
+          ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+```
+
+
 Afin de tester nos role nous avons créer les deux instances suivantes :
 * instance ec2 odoo, sur laquelle on souhaite avoir odoo (frontend + backend)
     * t2.micro
@@ -383,9 +434,9 @@ ansible-playbook -i hosts.yml playbook_odoo.yml \
     -e odoo_image='odoo:13.0' \
     --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
 ```
-### ***`console`***
+#### ***`console`***
 !["Capture_Capge_02.JPG"](./assets/Capture_Capge_02.JPG)<br>
-### ***`site odoo`***
+#### ***`site odoo`***
 !["Capture_Capge_03.JPG"](./assets/Capture_Capge_03.JPG)<br>
 
 ```bash
@@ -396,9 +447,9 @@ ansible-playbook -i hosts.yml playbook_pgadmin.yml \
     -e host_db='44.201.245.76' \
     --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
 ```
-### ***`console`***
+#### ***`console`***
 !["Capture_Capge_05.JPG"](./assets/Capture_Capge_05.JPG)<br>
-### ***`site pgamdin`***
+#### ***`site pgamdin`***
 !["Capture_Capge_06.JPG"](./assets/Capture_Capge_06.JPG)<br>
 ```bash
 # deploy ic-webapp on server ec2
@@ -411,9 +462,9 @@ ansible-playbook -i hosts.yml playbook_ic-webapp.yml \
     -e ic_webapp_port='80' \
     --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
 ```
-### ***`console`***
+#### ***`console`***
 !["Capture_Capge_08.JPG"](./assets/Capture_Capge_08.JPG)<br>
-### ***`site ic-webapp`***
+#### ***`site ic-webapp`***
 !["Capture_Capge_09.JPG"](./assets/Capture_Capge_09.JPG)<br>
 
 # Déploiement de l'environnement dev avec TERRAFORM
