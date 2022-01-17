@@ -22,6 +22,51 @@ source : https://github.com/lianhuahayu/docker_role.git<br>
 * Installe docker-compose (via le script officiel)
 * Installe docker-compose via pip (indispensable pour les commandes ansible docker_compose)
 
+#### ***`tasks/main.yml`***
+```yml
+- name: "pre-requis pour installer docker"
+  package:
+    name: curl
+    state: present
+
+- name: "Recuperation du script d installation de Docker"
+  command: 'curl -fsSL https://get.docker.com -o get-docker.sh'
+
+- name: "Executer le script d'installation de Docker"
+  command: "sh get-docker.sh"
+  when: ansible_docker0 is undefined
+
+- name: "Démarrage et ajout au redémarrage du service Docker"
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: "Ajout de notre utilisateur au groupe docker"
+  user:
+    name: "{{ ansible_user }}"
+    append: yes
+    groups:
+        - docker
+
+- name: "Installation de  python pip pour ubuntu"
+  apt:
+    name: python3-pip
+    state: present
+  when: ansible_distribution == "Ubuntu"
+
+- name: "prerequis dockercompose"
+  command: 'curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose'
+
+- name: "install docker cmpose"
+  command: 'chmod +x /usr/local/bin/docker-compose'
+
+- name: "Installation du module docker-compose"
+  pip:
+    name: docker-compose
+    state: present
+```
+
 ## 2. Role Odoo 
 source : https://github.com/lianhuahayu/odoo_role.git<br>
 * Va déployer 2 conteneurs avec le template docker-compose:
@@ -42,6 +87,101 @@ source : https://github.com/lianhuahayu/odoo_role.git<br>
         * persistant les données avec un volume
 * Les deux conteneurs seront sur un network commun
 * Toutes les données sont variabilisées donc pourront être surchargée par ansible (-e )
+#### ***`defaults/main.yml`***
+```yml
+---
+# Utilisateur par defaut
+ansible_user: user
+ansible_sudo_pass: user
+
+# Postgres variables
+postgres_container: backend_odoo
+postgres_image: postgres:10
+postgres_port: 5432
+postgres_database: odoo
+postgres_user: odoo
+postgres_password: odoo
+postgres_data: backup-postgres-db-data
+
+# Odoo variables
+odoo_container: frontend_odoo
+odoo_image: odoo:13.0
+odoo_port: 8069
+odoo_data: backup-odoo-data
+
+# Nom du réseau
+network_name: odoo
+```
+
+#### ***`tasks/main.yml`***
+```yml
+---
+- name: "Ajout du template docker-compose.yml"
+  template:
+    src: "docker-compose.yml.j2"
+    dest: /home/{{ ansible_user }}/docker-compose.yml
+
+- name: "Lancer le fichier docker-compose.yml"
+  docker_compose:
+    project_src: /home/{{ ansible_user }}
+    files:
+    - docker-compose.yml
+    
+- name: "Relancer le container odoo apres l'init de la db"
+  shell: |
+    sleep 15
+    docker container restart {{ odoo_container }}
+    exit 0
+```
+
+#### ***`templates/docker-compose.yml.j2`***
+```jinja
+version: '2'
+services:
+  {{ postgres_container }}: 
+    container_name: {{ postgres_container }}
+    image: {{ postgres_image }}
+    restart: always
+    ports:
+      - "{{ postgres_port }}:5432"
+    environment:
+      - POSTGRES_DB={{ postgres_database }}
+      - POSTGRES_PASSWORD={{ postgres_password }}
+      - POSTGRES_USER={{ postgres_user }}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - {{ postgres_data }}:/var/lib/postgresql/data/pgdata
+    networks:
+      - {{ network_name }}
+
+  {{ odoo_container }}:
+    container_name: {{ odoo_container }}
+    image: {{ odoo_image }}
+    restart: always
+    depends_on:
+      - {{ postgres_container }}
+    ports:
+      - "{{ odoo_port }}:8069"
+    environment:
+      - HOST={{ postgres_container }}
+      - PORT={{ postgres_port }}
+      - USER={{ postgres_user }}
+      - PASSWORD={{ postgres_password }} 
+    command: odoo -i base -d {{ postgres_database }} --db_host={{ postgres_container }} -r {{ postgres_user }} -w {{ postgres_password }} 
+    volumes:
+      - {{ odoo_data }}:/var/lib/odoo
+    networks:
+      - {{ network_name }} 
+
+networks:
+  {{ network_name }}: 
+    name: {{ network_name }}
+    driver: bridge
+
+volumes:
+  {{ odoo_data }}:
+  {{ postgres_data }}:
+```
 
 ## 3. Role PgAdmin
 source : https://github.com/Yellow-carpet/pgadmin_role.git<br>
@@ -53,7 +193,76 @@ source : https://github.com/Yellow-carpet/pgadmin_role.git<br>
         * pgadmin_port (port de l'application par défaut 80)
     * Persistance du fichier /pgadmin4/servers.json permettant à l'initialisation, d'avoir déjà du contenu : celui de la base de donnée odoo
 * Va copier le fichier "templatisé" servers.json sur la machine distante contenant toute les informations de la base de donnée odoo
-* Toutes les données sont variabilisées donc pourront être surchargée par ansible 
+* Toutes les données sont variabilisées donc pourront être surchargée par ansible
+
+#### ***`defaults/main.yml`***
+```yml
+---
+# servers.json variables
+host_db: 172.31.82.22
+port_db: 5432 
+maintenanceDB: postgres 
+username_db: odoo
+
+# pgadmin docker-compose variables
+pgadmin_email: pgadmin@pgadmin.com
+pgadmin_pass: pgadmin
+pgadmin_port: 5050
+```
+
+#### ***`tasks/main.yml`***
+```yml
+---
+- name: "Ajout du template pgadmin docker-compose.yml"
+  template:
+    src: "docker-compose.yml.j2"
+    dest: /home/{{ ansible_user }}/docker-compose.yml
+
+- name: "Ajout du template servers.json"
+  template:
+    src: "servers.json.j2"
+    dest: /home/{{ ansible_user }}/servers.json
+
+
+- name: "Lancer le fichier docker-compose.yml pour pgadmin"
+  docker_compose:
+    project_src: /home/{{ ansible_user }}
+    files:
+    - docker-compose.yml
+```
+
+#### ***`templates/docker-compose.yml.j2`***
+```jinja
+version: "3.3"
+services:
+  pgadmin:
+     image: dpage/pgadmin4
+     restart: always
+     environment:
+       PGADMIN_DEFAULT_EMAIL: {{ pgadmin_email }} #the username to login to pgadmin
+       PGADMIN_DEFAULT_PASSWORD: {{ pgadmin_pass }} # the password to login to pgadmin
+     ports:
+       - "{{ pgadmin_port }}:80"
+     volumes:
+       - ./servers.json:/pgadmin4/servers.json # preconfigured servers/connections
+```
+
+#### ***`templates/servers.json.j2`***
+```jinja
+{
+  "Servers": {
+    "1": {
+      "Name": "docker_postgres",  #name of the server in pgadmin
+      "Group": "docker_postgres_group", #group of the server in pgadmin
+      "Host": "{{ host_db }}", #host of the database (in our case it is equal to the name of the database)
+      "Port": {{ port_db }} , #port of the db
+      "MaintenanceDB": "{{ maintenanceDB }}", #initial database that we would like to connect to
+      "Username": "{{ username_db }}", #username to connect to the db
+      "SSLMode": "prefer"
+    }
+  }
+}
+```
 
 ## 4. Role ic-webapp
 source: https://github.com/omarpiotr/ic-webapp_role<br>
@@ -64,6 +273,46 @@ source: https://github.com/omarpiotr/ic-webapp_role<br>
         * pgadmin_url : l'url de notre site pgAdmin sous la forme http://url-pgadmin:5050
         * ic_webapp_port : port exposé par notre application vers l'extérieur
 * Toutes les données sont variabilisées donc pourront être surchargée par ansible
+
+#### ***`defaults/main.yml`***
+```yml
+# defaults file for ic-webapp_role
+ic_webapp_image: "lianhuahayu/ic-webapp:1.0"
+odoo_url: "127.0.0.1:8069"
+pgadmin_url: "127.0.0.1:5050"
+ic_webapp_port: 80
+```
+
+#### ***`tasks/main.yml`***
+```yml
+---
+# tasks file for ic-webapp_role
+
+- name: "Ajout du template ic-webapp_role  docker-compose.yml"
+  template:
+    src: "docker-compose.yml.j2"
+    dest: /home/{{ ansible_user }}/docker-compose-ic.yml
+
+- name: "Lancer le fichier docker-compose.yml"
+  docker_compose:
+    project_src: /home/{{ ansible_user }}
+    files:
+    - docker-compose-ic.yml
+```
+
+#### ***`templates/docker-compose.yml.j2`***
+```jinja
+version: "3.3"
+services:
+  ic-webapp:
+     image: {{ ic_webapp_image }}
+     restart: always
+     environment:
+       ODOO_URL: {{ odoo_url }}
+       PGADMIN_URL: {{ pgadmin_url }}
+     ports:
+       - "{{ ic_webapp_port }}:8080"
+```
 
 
 ## 5. Troubleshooting
