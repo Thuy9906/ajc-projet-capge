@@ -96,13 +96,13 @@ Afin de consommer et tester nos roles, nous avons créé 3 playbooks
 Afin de tester nos role nous avons créer les deux instances suivantes :
 * instance ec2 odoo, sur laquelle on souhaite avoir odoo (frontend + backend)
     * t2.micro
-    * ip : 54.221.36.222
-    * dns : ec2-54-221-36-222.compute-1.amazonaws.com
+    * ip : 44.201.245.76
+    * dns : ec2-44-201-245-76.compute-1.amazonaws.com
     * sécurity Group : 22 / 5432 / 8069
 * instance ec2 server, sur laquelle on souhaite avoir pgAdmin et ic-webapp
     * t2.micro
-    * ip : 34.229.74.135
-    * dns : ec2-34-229-74-135.compute-1.amazonaws.com
+    * ip : 52.87.202.243
+    * dns : ec2-52-87-202-243.compute-1.amazonaws.com
     * sécurity Group : 22 / 80 / 5050 
 * Nous dispons aussi d'un clé privé permettant de se connecter aux deux instances ec2 ci-dessus:
     * /home/ubuntu/.ssh/capge_projet_kp.pem
@@ -116,32 +116,51 @@ Afin de tester nos role nous avons créer les deux instances suivantes :
     * **pgadmin_url** : l'adresse dns publique ou ip publique de l'instance ec2 server
     * **ic_webapp_image** : le nom de l'image ic-webapp sur docker-hub
     * **ic_webapp_port** *(optionnel)* : port exposé (externe) de l'application ic-webapp
-```bash
-### Commande ansible à exéctuer (sur une machine disposant de ansible) ###
 
+## Commandes ansible à exécuter (sur une machine disposant ansible)
+```bash
 # install requirements
 ansible-galaxy install -r roles/requirements.yml
-
+```
+!["Capture_Capge_01.JPG"](./assets/Capture_Capge_01.JPG)
+```bash
 # deploy odoo container on odoo ec2
 ansible-playbook -i hosts.yml playbook_odoo.yml \
     -e ansible_connection='ssh' \
-    -e ansible_host='54.221.36.222' \
+    -e ansible_host='44.201.245.76' \
+    -e postgres_image='postgres:10' \
+    -e odoo_image='odoo:13.0' \
     --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
+```
+### ***`console`***
+!["Capture_Capge_02.JPG"](./assets/Capture_Capge_02.JPG)<br>
+### ***`site odoo`***
+!["Capture_Capge_03.JPG"](./assets/Capture_Capge_03.JPG)<br>
 
+```bash
 # deploy pgamdin on server ec2
 ansible-playbook -i hosts.yml playbook_pgadmin.yml \
     -e ansible_connection='ssh' \
-    -e ansible_host='34.229.74.135' \
-    -e host_db='54.221.36.222' \
+    -e ansible_host='52.87.202.243' \
+    -e host_db='44.201.245.76' \
     --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
-
+```
+### ***`console`***
+!["Capture_Capge_05.JPG"](./assets/Capture_Capge_05.JPG)<br>
+### ***`site pgamdin`***
+!["Capture_Capge_06.JPG"](./assets/Capture_Capge_06.JPG)<br>
+```bash
 # deploy ic-webapp on server ec2
 ansible-playbook -i hosts.yml playbook_ic-webapp.yml \
     -e ansible_connection='ssh' \
-    -e ansible_host='34.229.74.135' \
-    -e odoo_url='http://ec2-54-221-36-222.compute-1.amazonaws.com:8069' \
-    -e pgadmin_url='http://ec2-34-229-74-135.compute-1.amazonaws.com:5050' \
+    -e ansible_host='52.87.202.243' \
+    -e odoo_url='http://ec2-44-201-245-76.compute-1.amazonaws.com:8069' \
+    -e pgadmin_url='http://ec2-52-87-202-243.compute-1.amazonaws.com:5050' \
     -e ic_webapp_image='lianhuahayu/ic-webapp:1.0' \
     -e ic_webapp_port='80' \
     --private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'
 ```
+### ***`console`***
+!["Capture_Capge_08.JPG"](./assets/Capture_Capge_08.JPG)<br>
+### ***`site ic-webapp`***
+!["Capture_Capge_09.JPG"](./assets/Capture_Capge_09.JPG)<br>
