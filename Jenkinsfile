@@ -102,7 +102,7 @@ pipeline {
                     terraform init
                     terraform plan
                     IMAGE="ic-webapp_image=$USERNAME/$IMAGE_NAME:$IMAGE_TAG"
-                    terraform apply -var='key_path=../.aws/capge_projet_kp.pem' -var=${IMAGE} --auto-approve
+                    terraform apply -var='key_path=../.aws/capge_projet_kp.pem' -var=${IMAGE} -var='odoo_image=odoo:13.0' -var='postgres_image=postgres:10' --auto-approve
                     '''               
                     }
                }
