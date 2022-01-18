@@ -483,11 +483,359 @@ ansible-playbook -i hosts.yml playbook_ic-webapp.yml \
 * ec2_master : module permettant de créer une instance t3.medium et qui lancera les commandes ansible
 * ec2_worker : module permettant des instance t2.micro
 
+### module "sg" security group
+```javascript
+resource "aws_security_group" "web-sg" {
+  name = var.sg_name
+  description = "Allow inbound traffic with port 22 & 80 & 443"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    from_port   = 5050
+    to_port     = 5050
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    from_port   = 8069
+    to_port     = 8069
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+}
+
+variable "sg_name" {
+  default = "capge-sg-dev"
+}
+
+output "sg_name" {
+  value = aws_security_group.web-sg.name
+}
+```
+
+### module "ec2_worker"
+```javascript
+resource "aws_instance" "myec2_worker" {
+  ami             = var.ami
+  instance_type   = var.instance_type
+  key_name        = var.key_name
+  security_groups = var.sg_group
+
+  root_block_device {
+    delete_on_termination = true
+  }
+  
+  tags = {
+    Name      = "capge-${var.env}-${var.serveur}"
+    formation = "Frazer"
+    iac       = "terraform"
+  }
+}
+``` 
+
+```javascript
+variable "ami" {
+  default = "ami-04505e74c0741db8d"
+  type    = string
+}
+
+variable "instance_type" {
+  default = "t2.micro"
+}
+
+variable "key_name" {
+    default = "capge_projet_kp"
+}
+
+variable "sg_group" {
+  type = list(string)
+  default = ["security_group_capge"]
+}
+
+variable "username"{
+    default = "ubuntu"
+}
+
+variable "env" {
+  default = "dev"
+}
+
+variable "serveur" {
+  default = "admin"
+}
+
+variable "private_key_path" {
+  default = "D:/Formation/AJC/05.DevOps/PROJET/capge_projet_kp.pem"
+}
+
+output "ec2_ip" {
+  value = aws_instance.myec2_worker.public_ip
+}
+
+output "ec2_dns" {
+  value = aws_instance.myec2_worker.public_dns
+}
+```
+
+### module "ec2_master"
+```javascript
+resource "aws_instance" "myec2_master" {
+  ami             = var.ami
+  instance_type   = var.instance_type
+  key_name        = var.key_name
+  security_groups = var.sg_group
+
+  root_block_device {
+    delete_on_termination = true
+  }
+  
+  tags = {
+    Name      = "capge-${var.env}-${var.serveur}"
+    formation = "Frazer"
+    iac       = "terraform"
+  }
+
+  provisioner "file" {
+    source      = var.private_key_path
+    destination = "/home/ubuntu/.ssh/capge_projet_kp.pem"
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sleep 15",
+      "sudo apt-get update -y",
+      "sleep 5",
+      "chmod 400 /home/ubuntu/.ssh/capge_projet_kp.pem",
+      "sudo apt-get install ansible -y",
+      "sudo apt-get install sshpass -y",
+      "mkdir ansible-deploy",
+      "git clone https://github.com/omarpiotr/ansible_deploy_ic-webapp.git ./ansible-deploy",
+      "cd ./ansible-deploy",
+      "ansible-galaxy install -r roles/requirements.yml",
+      "ansible-playbook -i hosts.yml playbook_odoo.yml -e ansible_connection='ssh' \\",
+        "-e ansible_host='${var.ec2_odoo_ip}' \\",
+        "--private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'",
+      "ansible-playbook -i hosts.yml playbook_pgadmin.yml -e ansible_connection='ssh' \\",
+        "-e ansible_host='${var.ec2_server_ip}' \\",
+        "-e host_db='${var.ec2_odoo_ip}' \\",
+        "--private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'",
+      "ansible-playbook -i hosts.yml playbook_ic-webapp.yml -e ansible_connection='ssh' \\",
+        "-e ansible_host='${var.ec2_server_ip}' \\",
+        "-e odoo_url='http://${var.odoo_dns}:${var.odoo_port}' \\",
+        "-e pgadmin_url='http://${var.pgadmin_dns}:${var.pgadmin_port}' \\",
+        "-e ic_webapp_image='${var.ic-webapp_image}' \\",
+        "--private-key '/home/ubuntu/.ssh/capge_projet_kp.pem'"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+    }
+  }
+
+  provisioner "local-exec" {
+      command = "echo vitrine : ${var.pgadmin_dns} >> ip_ec2.txt"
+  }
+}
+```
+
+```javascript
+variable "ami" {
+  default = "ami-04505e74c0741db8d"
+  type    = string
+}
+
+variable "instance_type" {
+  default = "t3.medium"
+}
+
+variable "key_name" {
+    default = "capge_projet_kp"
+}
+
+variable "sg_group" {
+  type = list(string)
+  default = ["security_group_capge"]
+}
+
+variable "username"{
+    default = "ubuntu"
+}
+
+variable "env" {
+  default = "dev"
+}
+
+variable "serveur" {
+  default = "AnsibleMaster"
+}
+
+variable "private_key_path" {
+  default = "D:/Formation/AJC/05.DevOps/PROJET/capge_projet_kp.pem"
+}
+
+variable "ec2_server_ip" {
+  default = "0.0.0.0"
+}
+
+variable "ec2_odoo_ip" {
+  default = "0.0.0.0"
+}
+
+variable "pgadmin_dns" {
+  default = "pgadmin-dns.com"
+}
+
+variable "odoo_dns" {
+  default = "odoo-dns.com"
+}
+
+variable "pgadmin_port" {
+  default = 5050
+}
+
+variable "odoo_port" {
+  default = 8069
+}
+
+variable "ic-webapp_image" {
+  default = "lianhuahayu/ic-webapp:1.0"
+}
+
+variable "odoo_image" {
+  default = "odoo:13.0"
+}
+
+variable "postgres_image" {
+  default = "postgres:10"
+}
+```
+
 ## Les crédentials
 Pour des raison de sécurité, le fichier ***`.aws/credential`*** est simplement un template.<br>
 Dans notre JenkinsFile, nous allons remplacer donc remplacer chaine de caractères suivantes par les valeurs de nos crédentials, stockés de façon sécurisé dans Jenkins :
 * YOUR_KEY_ID
 * YOUR_ACCESS_KEY
+
+```ini
+[default]
+aws_access_key_id = "YOUR_KEY_ID"
+aws_secret_access_key = "YOUR_ACCESS_KEY"
+```
+
+## Le remote backend S3
+```javascript
+terraform {
+  backend "s3" {
+    bucket                  = "capge-bucket-projet"
+    key                     = "ic-webapp_project.tfstate"
+    region                  = "us-east-1"
+    shared_credentials_file = "../.aws/credentials"
+  }
+}
+```
+
+## Le provider
+```javascript
+provider "aws" {
+  region     = "us-east-1"
+  shared_credentials_file = "../.aws/credentials"
+}
+```
+
+## Le manifest principal (main)
+```javascript
+module "deploy_sg" {
+  source = "../modules/sg"
+  sg_name = "capge-sg-dev"
+}
+
+module "deploy_ec2_server"{
+    source = "../modules/ec2_worker"
+    serveur = "admin"
+    key_name = var.key_name
+    sg_group = [ module.deploy_sg.sg_name]
+}
+
+module "deploy_ec2_odoo"{
+    source = "../modules/ec2_worker"
+    serveur = "odoo"
+    key_name = var.key_name
+    sg_group = [ module.deploy_sg.sg_name]
+}
+
+module "deploy_ec2_master" {
+    depends_on = [
+      module.deploy_ec2_server,
+      module.deploy_ec2_odoo
+    ]
+    source = "../modules/ec2_master"
+    serveur = "AnsibleMaster"
+    key_name = var.key_name
+    private_key_path = var.key_path
+    sg_group = [ module.deploy_sg.sg_name]
+    ec2_server_ip = module.deploy_ec2_server.ec2_ip
+    pgadmin_dns = module.deploy_ec2_server.ec2_dns
+    pgadmin_port = var.pgadmin_port
+    ec2_odoo_ip = module.deploy_ec2_odoo.ec2_ip
+    odoo_dns = module.deploy_ec2_odoo.ec2_dns
+    odoo_port = var.odoo_port
+    ic-webapp_image = var.ic-webapp_image
+    odoo_image = var.odoo_image
+    postgres_image = var.postgres_image
+}
+```
 
 ## Les variables à surcharger
 * Obligatoires
@@ -500,7 +848,37 @@ Dans notre JenkinsFile, nous allons remplacer donc remplacer chaine de caractèr
     * odoo_port : port de l'interface web de odoo
     * pgadmin_port : port de l'interface web de pgAdmin
 
-#### ***`Exemple`***
+```javascript
+variable "key_path" {
+  default = "D:/Formation/AJC/05.DevOps/PROJET/capge_projet_kp.pem"
+}
+
+variable "key_name" {
+  default = "capge_projet_kp"
+}
+
+variable "odoo_port" {
+  default = 8069
+}
+
+variable "pgadmin_port" {
+  default = 5050
+}
+
+variable "ic-webapp_image" {
+  default = "lianhuahayu/ic-webapp:1.0"
+}
+
+variable "odoo_image" {
+  default = "odoo:13.0"
+}
+
+variable "postgres_image" {
+  default = "postgres:10"
+}
+```
+
+## Exemple de commande Terraform
 ```bash
 terraform init
 terraform plan 
