@@ -252,12 +252,12 @@ services:
 {
   "Servers": {
     "1": {
-      "Name": "docker_postgres",  #name of the server in pgadmin
-      "Group": "docker_postgres_group", #group of the server in pgadmin
-      "Host": "{{ host_db }}", #host of the database (in our case it is equal to the name of the database)
-      "Port": {{ port_db }} , #port of the db
-      "MaintenanceDB": "{{ maintenanceDB }}", #initial database that we would like to connect to
-      "Username": "{{ username_db }}", #username to connect to the db
+      "Name": "docker_postgres",
+      "Group": "docker_postgres_group",
+      "Host": "{{ host_db }}",
+      "Port": {{ port_db }} ,
+      "MaintenanceDB": "{{ maintenanceDB }}",
+      "Username": "{{ username_db }}",
       "SSLMode": "prefer"
     }
   }
